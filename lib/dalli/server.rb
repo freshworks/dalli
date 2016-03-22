@@ -57,8 +57,11 @@ module Dalli
       verify_state
       raise Dalli::NetworkError, "#{hostname}:#{port} is down: #{@error} #{@msg}. If you are sure it is running, ensure memcached version is > 1.4." unless alive?
       begin
-        send(op, *args)
+        response = send(op, *args)
       rescue Dalli::NetworkError
+        connect(false)
+        retry unless @down_at
+        up!
         raise
       rescue Dalli::MarshalError => ex
         Dalli.logger.error "Marshalling error for key '#{args.first}': #{ex.message}"
@@ -72,6 +75,9 @@ module Dalli
         Dalli.logger.error "This is a bug in Dalli, please enter an issue in Github if it does not already exist."
         Dalli.logger.error ex.backtrace.join("\n\t")
         down!
+      else
+        up! if @fail_count > 0
+        return response
       end
     end
 
@@ -548,7 +554,7 @@ module Dalli
       end
     end
 
-    def connect
+    def connect(reset=true)
       Dalli.logger.debug { "Dalli::Server#connect #{hostname}:#{port}" }
 
       begin
@@ -556,7 +562,7 @@ module Dalli
         @sock = KSocket.open(hostname, port, self, options)
         @version = version # trigger actual connect
         sasl_authentication if need_auth?
-        up!
+        up! if reset
       rescue Dalli::DalliError # SASL auth failure
         raise
       rescue SystemCallError, Timeout::Error, EOFError, SocketError => e

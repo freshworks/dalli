@@ -325,7 +325,7 @@ module Dalli
       rescue NetworkError => e
         Dalli.logger.debug { e.inspect }
         Dalli.logger.debug { "retrying request with new server" }
-        retry
+        raise
       end
     end
 
